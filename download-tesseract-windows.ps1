@@ -4,8 +4,8 @@
 
 $ErrorActionPreference = "Stop"
 
-$TESSERACT_VERSION = "5.5.0"
-$DOWNLOAD_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v$TESSERACT_VERSION/$($TESSERACT_VERSION -replace '\.','_')-win64.exe"
+$TESSERACT_VERSION = "5.4.0.20240606"
+$DOWNLOAD_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v$TESSERACT_VERSION/tesseract-ocr-w64-setup-$TESSERACT_VERSION.exe"
 $EXTRACT_DIR = "$env:TEMP\tesseract-extract"
 $TARGET_DIR = "src\main\resources\native\windows-x64"
 
