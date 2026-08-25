@@ -4,8 +4,8 @@
 
 $ErrorActionPreference = "Stop"
 
-$TESSERACT_VERSION = "5.5.3.20260724"
-$DOWNLOAD_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.5.3.20260724/tesseract-ocr-w64-setup-5.5.3.20260724.exe"
+$TESSERACT_VERSION = "5.4.0.20240606"
+$DOWNLOAD_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
 $TARGET_DIR = "src\main\resources\native\windows-x64"
 $TEMP_DIR = "$env:TEMP\tesseract_ocr_build"
 
