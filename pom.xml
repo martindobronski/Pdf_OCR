@@ -18,15 +18,25 @@
     </properties>
 
     <dependencies>
+        <!-- Apache PDFBox für die PDF-Verarbeitung -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>${pdfbox.version}</version>
         </dependency>
+
+        <!-- Tess4J für die Tesseract OCR-Texterkennung -->
         <dependency>
             <groupId>net.sourceforge.tess4j</groupId>
             <artifactId>tess4j</artifactId>
             <version>${tess4j.version}</version>
+        </dependency>
+
+        <!-- SLF4J Simple Logger zur Ausgabe und Vermeidung von Warnungen -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>2.0.12</version>
         </dependency>
     </dependencies>
 
@@ -40,7 +50,9 @@
                 </includes>
             </resource>
         </resources>
+        
         <plugins>
+            <!-- Standard JAR Plugin zur Festlegung der Main-Klasse -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -53,6 +65,8 @@
                     </archive>
                 </configuration>
             </plugin>
+
+            <!-- Maven Shade Plugin zur Erstellung des lauffähigen "Fat-JARs" -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -64,7 +78,25 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <filters>
+                                <!-- Filtert unkritische Signaturen und Lizenzdateien heraus -->
+                                <filter>
+                                    <artifact>*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/LICENSE*</exclude>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
+                                        <exclude>META-INF/manifest.mf</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                             <transformers>
+                                <!-- Führt SPI-Dienste (z.B. ImageIO) aus verschiedenen JARs sauber zusammen -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.pdfooocr.PdfOcrApplication</mainClass>
                                 </transformer>

@@ -3,7 +3,6 @@
 # Automatically downloads portable 7-Zip if not installed
 
 $ErrorActionPreference = "Stop"
-
 $TESSERACT_VERSION = "5.4.0.20240606"
 $DOWNLOAD_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
 $TARGET_DIR = "src\main\resources\native\windows-x64"
@@ -13,13 +12,28 @@ Write-Host "=== Tesseract OCR Windows Download ===" -ForegroundColor Cyan
 Write-Host "Version: $TESSERACT_VERSION"
 Write-Host ""
 
-# Find or download 7-Zip
+# =========================================================================
+# SCHRITT 1: Verzeichnisse vorab bereinigen und neu erstellen
+# =========================================================================
+if (-not (Test-Path $TARGET_DIR)) {
+    New-Item -ItemType Directory -Path $TARGET_DIR -Force | Out-Null
+}
+if (Test-Path $TEMP_DIR) {
+    Remove-Item -Path $TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
+}
+New-Item -ItemType Directory -Path $TEMP_DIR -Force | Out-Null
+
+# =========================================================================
+# SCHRITT 2: 7-Zip lokalisieren oder portabel herunterladen
+# =========================================================================
 $7z = $null
 $7zPaths = @(
     "C:\Program Files\7-Zip\7z.exe",
     "C:\Program Files (x86)\7-Zip\7z.exe",
     "${env:ProgramFiles}\7-Zip\7z.exe"
 )
+
+# Prüfen, ob 7-Zip bereits lokal installiert ist
 foreach ($p in $7zPaths) {
     if (Test-Path $p) {
         $7z = $p
@@ -27,7 +41,7 @@ foreach ($p in $7zPaths) {
     }
 }
 
-# Try to install via winget if not found
+# Falls nicht gefunden, Installation via winget versuchen
 if (-not $7z) {
     Write-Host "7-Zip not found. Trying to install via winget..." -ForegroundColor Yellow
     $winget = Get-Command winget -ErrorAction SilentlyContinue
@@ -42,53 +56,45 @@ if (-not $7z) {
     }
 }
 
-# Download portable 7-Zip as last resort
+# Portables 7-Zip als finaler Fallback herunterladen
 if (-not $7z) {
     Write-Host "Downloading portable 7-Zip..." -ForegroundColor Yellow
     $7zPortableDir = "$TEMP_DIR\7zip"
     $7zPortableExe = "$7zPortableDir\7za.exe"
-
-    if (-not (Test-Path $7zPortableExe)) {
-        New-Item -ItemType Directory -Path $7zPortableDir -Force | Out-Null
-        $7zZipUrl = "https://www.7-zip.org/a/7za920.zip"
-        $7zZipPath = "$TEMP_DIR\7za.zip"
-
-        try {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $7zZipUrl -OutFile $7zZipPath -UseBasicParsing
-
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::ExtractToDirectory($7zZipPath, $7zPortableDir)
-
-            if (Test-Path $7zPortableExe) {
-                $7z = $7zPortableExe
-                Write-Host "Portable 7-Zip ready: $7z" -ForegroundColor Green
-            }
-        } catch {
-            Write-Host "ERROR: Could not get 7-Zip." -ForegroundColor Red
-            Write-Host "Please install manually: https://7-zip.org/download.html"
-            exit 1
+    
+    New-Item -ItemType Directory -Path $7zPortableDir -Force | Out-Null
+    $7zZipUrl = "https://www.7-zip.org/a/7za920.zip"
+    $7zZipPath = "$TEMP_DIR\7za.zip"
+    
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $7zZipUrl -OutFile $7zZipPath -UseBasicParsing
+        
+        # Verwende das native Expand-Archive (zuverlässiger in modernen PS-Versionen)
+        Expand-Archive -Path $7zZipPath -DestinationPath $7zPortableDir -Force
+        
+        if (Test-Path $7zPortableExe) {
+            $7z = $7zPortableExe
+            Write-Host "Portable 7-Zip ready: $7z" -ForegroundColor Green
+        } else {
+            throw "7za.exe konnte im ZIP-Archiv nicht gefunden werden."
         }
-    } else {
-        $7z = $7zPortableExe
+    } catch {
+        Write-Host "ERROR: Could not get portable 7-Zip." -ForegroundColor Red
+        Write-Host "Please install manually: https://7-zip.org/download.html"
+        exit 1
     }
 }
 
 Write-Host "Using 7-Zip: $7z" -ForegroundColor Green
 
-# Create directories
-if (-not (Test-Path $TARGET_DIR)) {
-    New-Item -ItemType Directory -Path $TARGET_DIR -Force | Out-Null
-}
-if (Test-Path $TEMP_DIR) {
-    Remove-Item -Path $TEMP_DIR -Recurse -Force
-}
-New-Item -ItemType Directory -Path $TEMP_DIR -Force | Out-Null
-
-# Download Tesseract installer
+# =========================================================================
+# SCHRITT 3: Tesseract Installer herunterladen
+# =========================================================================
 $installerPath = "$TEMP_DIR\tesseract-setup.exe"
 Write-Host ""
 Write-Host "Downloading Tesseract $TESSERACT_VERSION..." -ForegroundColor Yellow
+
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $DOWNLOAD_URL -OutFile $installerPath -UseBasicParsing
@@ -99,7 +105,9 @@ try {
     exit 1
 }
 
-# Extract with 7-Zip
+# =========================================================================
+# SCHRITT 4: Installer extrahieren
+# =========================================================================
 Write-Host ""
 Write-Host "Extracting installer with 7-Zip..." -ForegroundColor Yellow
 $extractDir = "$TEMP_DIR\extracted"
@@ -111,7 +119,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Check if there's a nested installer (NSIS often wraps files)
+# Prüfen auf verschachtelte Installer (NSIS Wrapper)
 $nested = Get-ChildItem -Path $extractDir -Filter "*.exe" -Recurse | Where-Object { $_.Name -like "*tesseract*" -and $_.FullName -ne $installerPath }
 if ($nested) {
     Write-Host "Found nested installer, extracting again..." -ForegroundColor Yellow
@@ -120,10 +128,11 @@ if ($nested) {
     & "$7z" x $nested[0].FullName -o"$nestedExtract" -y 2>&1 | Out-Null
 }
 
-# Search for all DLLs
+# =========================================================================
+# SCHRITT 5: DLLs suchen und ins Maven-Ressourcen-Target kopieren
+# =========================================================================
 Write-Host ""
 Write-Host "Searching for DLLs..." -ForegroundColor Yellow
-
 $dllFiles = Get-ChildItem -Path $TEMP_DIR -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue
 Write-Host "Found $($dllFiles.Count) DLL files total" -ForegroundColor Cyan
 
@@ -138,10 +147,8 @@ if ($dllFiles.Count -eq 0) {
     }
 }
 
-# Copy all DLLs
 Write-Host ""
 Write-Host "Copying DLLs to $TARGET_DIR..." -ForegroundColor Yellow
-
 $copiedCount = 0
 foreach ($dll in $dllFiles) {
     $target = Join-Path $TARGET_DIR $dll.Name
@@ -152,12 +159,17 @@ foreach ($dll in $dllFiles) {
     }
 }
 
-# Cleanup
+# =========================================================================
+# SCHRITT 6: Bereinigung (nur den temporären Ordner ohne das portable 7zip)
+# =========================================================================
 Write-Host ""
-Write-Host "Cleaning up..." -ForegroundColor Yellow
-Remove-Item -Path $TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "Cleaning up temporary files..." -ForegroundColor Yellow
+# Behalte die portable 7-Zip EXE unberührt, falls Fehler auftreten, aber lösche den Rest
+Get-ChildItem -Path $TEMP_DIR | Where-Object { $_.Name -ne "7zip" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-# Summary
+# =========================================================================
+# SCHRITT 7: Zusammenfassung
+# =========================================================================
 Write-Host ""
 if ($copiedCount -gt 0) {
     Write-Host "=== Done! ===" -ForegroundColor Green
