@@ -1,182 +1,155 @@
 # download-tesseract-windows.ps1
 # Downloads Tesseract OCR Windows binaries for bundling
-# Run this script on Windows to populate src\main\resources\native\windows-x64\
+# Uses 7-Zip to extract the NSIS installer (more reliable than silent install)
+#
+# Prerequisites: 7-Zip must be installed (https://7-zip.org)
+#   winget install 7zip.7zip
+#   or download from https://7-zip.org/download.html
 
 $ErrorActionPreference = "Stop"
 
-$TESSERACT_VERSION = "5.4.0.20240606"
-$DOWNLOAD_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v$TESSERACT_VERSION/tesseract-ocr-w64-setup-$TESSERACT_VERSION.exe"
-$EXTRACT_DIR = "$env:TEMP\tesseract_ocr"
+$TESSERACT_VERSION = "5.5.3.20260724"
+$DOWNLOAD_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.5.3.20260724/tesseract-ocr-w64-setup-5.5.3.20260724.exe"
 $TARGET_DIR = "src\main\resources\native\windows-x64"
+$TEMP_DIR = "$env:TEMP\tesseract_ocr_build"
 
 Write-Host "=== Tesseract OCR Windows Download ===" -ForegroundColor Cyan
 Write-Host "Version: $TESSERACT_VERSION"
 Write-Host ""
 
-# Create target directory
+# Find 7-Zip
+$7zPaths = @(
+    "C:\Program Files\7-Zip\7z.exe",
+    "C:\Program Files (x86)\7-Zip\7z.exe",
+    "${env:ProgramFiles}\7-Zip\7z.exe",
+    "7z.exe"
+)
+$7z = $null
+foreach ($p in $7zPaths) {
+    if (Get-Command $p -ErrorAction SilentlyContinue) {
+        $7z = $p
+        break
+    }
+}
+
+if (-not $7z) {
+    Write-Host "ERROR: 7-Zip not found!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Please install 7-Zip first:" -ForegroundColor Yellow
+    Write-Host "  winget install 7zip.7zip"
+    Write-Host "  or download from https://7-zip.org/download.html"
+    exit 1
+}
+
+Write-Host "Using 7-Zip: $7z" -ForegroundColor Green
+
+# Create directories
 if (-not (Test-Path $TARGET_DIR)) {
     New-Item -ItemType Directory -Path $TARGET_DIR -Force | Out-Null
 }
+if (Test-Path $TEMP_DIR) {
+    Remove-Item -Path $TEMP_DIR -Recurse -Force
+}
+New-Item -ItemType Directory -Path $TEMP_DIR -Force | Out-Null
 
+# Download
+$installerPath = "$TEMP_DIR\tesseract-setup.exe"
+Write-Host ""
 Write-Host "Downloading Tesseract $TESSERACT_VERSION..." -ForegroundColor Yellow
-
-# Download the installer
-$installerPath = "$env:TEMP\tesseract_ocr_setup.exe"
 try {
     Invoke-WebRequest -Uri $DOWNLOAD_URL -OutFile $installerPath -UseBasicParsing
     Write-Host "Download complete: $installerPath" -ForegroundColor Green
 } catch {
     Write-Host "ERROR: Download failed." -ForegroundColor Red
-    Write-Host "Please download manually from:"
-    Write-Host "  $DOWNLOAD_URL"
-    Write-Host ""
-    Write-Host "After downloading, place the installer at: $installerPath"
-    Write-Host "Then run this script again."
+    Write-Host "URL: $DOWNLOAD_URL"
     exit 1
 }
 
-# Clean extraction directory
-if (Test-Path $EXTRACT_DIR) {
-    Remove-Item -Path $EXTRACT_DIR -Recurse -Force
-}
-
+# Extract with 7-Zip (NSIS installers are 7z archives)
 Write-Host ""
-Write-Host "Installing Tesseract (silent) to $EXTRACT_DIR ..." -ForegroundColor Yellow
+Write-Host "Extracting installer with 7-Zip..." -ForegroundColor Yellow
+$extractDir = "$TEMP_DIR\extracted"
+New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
 
-# NSIS silent install - /S must be uppercase, /D=path must be last, no quotes around path
-$nsisArgs = "/S /D=$EXTRACT_DIR"
-$process = Start-Process -FilePath $installerPath -ArgumentList $nsisArgs -Wait -NoNewWindow -PassThru
-
-if ($process.ExitCode -ne 0) {
-    Write-Host "WARNING: Installer exited with code $($process.ExitCode)" -ForegroundColor DarkYellow
+& "$7z" x "$installerPath" -o"$extractDir" -y
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: 7-Zip extraction failed with code $LASTEXITCODE" -ForegroundColor Red
+    exit 1
 }
 
-# Wait a moment for files to settle
-Start-Sleep -Seconds 2
-
-# Debug: show what was installed
+# NSIS installers have a $PLUGINSDIR with the actual files
+# Search recursively for DLLs
 Write-Host ""
-Write-Host "Checking installation directory..." -ForegroundColor Yellow
-if (Test-Path $EXTRACT_DIR) {
-    Write-Host "Contents of $EXTRACT_DIR :" -ForegroundColor Cyan
-    Get-ChildItem -Path $EXTRACT_DIR -Filter "*.dll" -Recurse | ForEach-Object {
-        Write-Host "  $($_.FullName)" -ForegroundColor DarkGray
-    }
-} else {
-    Write-Host "Extraction directory does not exist!" -ForegroundColor Red
-}
+Write-Host "Searching for DLLs in extracted files..." -ForegroundColor Yellow
 
-# Also check default install path
-$defaultInstall = "C:\Program Files\Tesseract-OCR"
-if (Test-Path $defaultInstall) {
-    Write-Host ""
-    Write-Host "Found default installation at: $defaultInstall" -ForegroundColor Cyan
-    Write-Host "Contents:" -ForegroundColor Cyan
-    Get-ChildItem -Path $defaultInstall -Filter "*.dll" | ForEach-Object {
-        Write-Host "  $($_.FullName)" -ForegroundColor DarkGray
-    }
-}
+$dllFiles = Get-ChildItem -Path $extractDir -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue
+Write-Host "Found $($dllFiles.Count) DLL files" -ForegroundColor Cyan
 
-# Search for DLLs in both locations
-$searchPaths = @($EXTRACT_DIR, $defaultInstall)
-
-# List of DLLs to find and copy
-$dlls = @(
+# DLLs we need (with common name variations)
+$neededDlls = @(
     "tesseract.dll",
-    "leptonica-1.82.0.dll",
-    "leptonica-1.81.0.dll",
-    "leptonica-1.80.0.dll",
-    "libarchive-13.dll",
-    "libarchive.dll",
-    "libpng16-16.dll",
-    "libpng16.dll",
-    "libjpeg-8.dll",
-    "libjpeg.dll",
-    "libtiff-6.dll",
-    "libtiff.dll",
-    "libwebp-7.dll",
-    "libwebp.dll",
-    "libwebpmux-3.dll",
-    "libwebpmux.dll",
-    "libsharpyuv-0.dll",
-    "libsharpyuv.dll",
-    "libopenjp2-7.dll",
-    "libopenjp2.dll",
-    "libzstd.dll",
-    "liblzma-5.dll",
-    "liblzma.dll",
-    "liblz4.dll",
-    "liblz4-1.dll",
-    "libzlib.dll",
-    "zlib1.dll",
-    "gcc_s_seh-1.dll",
-    "libwinpthread-1.dll",
-    "libstdc++-6.dll"
+    "leptonica-*.dll",
+    "libarchive-*.dll",
+    "libpng*.dll",
+    "libjpeg*.dll",
+    "libtiff*.dll",
+    "libwebp*.dll",
+    "libwebpmux*.dll",
+    "libsharpyuv*.dll",
+    "libopenjp2*.dll",
+    "libzstd*.dll",
+    "liblzma*.dll",
+    "liblz4*.dll",
+    "zlib*.dll",
+    "libz*.dll",
+    "gcc_s_seh*.dll",
+    "libwinpthread*.dll",
+    "libstdc++*.dll",
+    "libgomp*.dll"
 )
 
 Write-Host ""
 Write-Host "Copying DLLs to $TARGET_DIR..." -ForegroundColor Yellow
 
 $copiedCount = 0
-foreach ($dll in $dlls) {
-    $found = $false
-    foreach ($searchPath in $searchPaths) {
-        # Search in root and subdirectories
-        $sourcePath = Join-Path $searchPath $dll
-        if (Test-Path $sourcePath) {
-            Copy-Item -Path $sourcePath -Destination $TARGET_DIR -Force
-            Write-Host "  Copied: $dll (from $searchPath)" -ForegroundColor Green
+foreach ($pattern in $neededDlls) {
+    $matches = $dllFiles | Where-Object { $_.Name -like $pattern }
+    foreach ($dll in $matches) {
+        $target = Join-Path $TARGET_DIR $dll.Name
+        if (-not (Test-Path $target)) {
+            Copy-Item -Path $dll.FullName -Destination $TARGET_DIR -Force
+            Write-Host "  Copied: $($dll.Name)" -ForegroundColor Green
             $copiedCount++
-            $found = $true
-            break
         }
-        # Also check 'lib' subdirectory
-        $sourcePathLib = Join-Path $searchPath "lib\$dll"
-        if (Test-Path $sourcePathLib) {
-            Copy-Item -Path $sourcePathLib -Destination $TARGET_DIR -Force
-            Write-Host "  Copied: $dll (from $searchPath\lib)" -ForegroundColor Green
-            $copiedCount++
-            $found = $true
-            break
-        }
-    }
-    if (-not $found) {
-        Write-Host "  Not found: $dll" -ForegroundColor DarkYellow
     }
 }
 
-# Also try to find any unknown DLLs that might be needed
-Write-Host ""
-Write-Host "Scanning for additional DLLs in installation..." -ForegroundColor Yellow
-foreach ($searchPath in $searchPaths) {
-    if (Test-Path $searchPath) {
-        Get-ChildItem -Path $searchPath -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-            $target = Join-Path $TARGET_DIR $_.Name
-            if (-not (Test-Path $target)) {
-                Copy-Item -Path $_.FullName -Destination $TARGET_DIR -Force
-                Write-Host "  Additional: $($_.Name)" -ForegroundColor DarkGreen
-                $copiedCount++
-            }
-        }
+# Copy ALL remaining DLLs not yet copied
+foreach ($dll in $dllFiles) {
+    $target = Join-Path $TARGET_DIR $dll.Name
+    if (-not (Test-Path $target)) {
+        Copy-Item -Path $dll.FullName -Destination $TARGET_DIR -Force
+        Write-Host "  Additional: $($dll.Name)" -ForegroundColor DarkGreen
+        $copiedCount++
     }
 }
 
 # Cleanup
 Write-Host ""
-Write-Host "Cleaning up..." -ForegroundColor Yellow
-Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $EXTRACT_DIR -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "Cleaning up temp files..." -ForegroundColor Yellow
+Remove-Item -Path $TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
 
+# Summary
 Write-Host ""
 Write-Host "=== Done! ===" -ForegroundColor Green
 Write-Host "Copied $copiedCount DLLs to $TARGET_DIR"
 Write-Host ""
 Write-Host "Files in target directory:" -ForegroundColor Cyan
-Get-ChildItem -Path $TARGET_DIR -Filter "*.dll" | ForEach-Object {
+Get-ChildItem -Path $TARGET_DIR -Filter "*.dll" | Sort-Object Name | ForEach-Object {
     Write-Host "  $($_.Name) ($([math]::Round($_.Length/1KB)) KB)" -ForegroundColor White
 }
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Review the DLLs in $TARGET_DIR"
-Write-Host "  2. Commit them to the repository"
-Write-Host "  3. Build with: mvn clean package"
+Write-Host "  1. git add $TARGET_DIR"
+Write-Host "  2. git commit -m 'Add Windows Tesseract DLLs'"
+Write-Host "  3. mvn clean package"
