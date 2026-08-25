@@ -8,41 +8,12 @@ Java-Programm zur automatisierten Texterkennung von PDF-Dateien. Das Programm li
 - **OCR-Texterkennung**: Bei bildbasierten PDFs wird Tesseract OCR verwendet
 - **Mehrsprachig**: Unterstützt Deutsch und Englisch
 - **Einfache Bedienung**: Kommandozeilen-basiert
+- **Keine externen Abhängigkeiten**: Tesseract OCR ist in der JAR gebündelt
 
 ## Voraussetzungen
 
 - Java 17 oder höher
-- Maven
-- Tesseract OCR
-
-### Tesseract installieren
-
-**macOS (Homebrew):**
-```bash
-brew install tesseract tesseract-lang
-```
-
-**Windows:**
-1. Tesseract-OCR Installer herunterladen: https://github.com/UB-Mannheim/tesseract/wiki
-2. Während der Installation "Additional language data" für Deutsch auswählen
-3. Standard-Installationspfad: `C:\Program Files\Tesseract-OCR`
-
-**Linux (Debian/Ubuntu):**
-```bash
-sudo apt install tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
-```
-
-### Umgebungsvariable (optional)
-
-Falls Tesseract nicht im Standardpfad installiert ist, kann die Umgebungsvariable `TESSDATA_PREFIX` gesetzt werden:
-
-```bash
-# macOS/Linux
-export TESSDATA_PREFIX="/pfad/zur/tessdata"
-
-# Windows (PowerShell)
-$env:TESSDATA_PREFIX="C:\pfad\tessdata"
-```
+- Maven (nur zum Kompilieren)
 
 ## Kompilieren
 
@@ -70,22 +41,52 @@ java -jar target/pdf-ocr-1.0-SNAPSHOT.jar /pfad/zu/pdfs /pfad/zu/ausgabe
 
 ```
 Pdf_OCR/
-├── pom.xml                          # Maven-Konfiguration
-├── input/                           # PDF-Dateien hier ablegen
-├── output/                          # Ergebnisse werden hier gespeichert
+├── pom.xml                              # Maven-Konfiguration
+├── fix-rpaths.sh                        # Script zum Aktualisieren der Dylibs
+├── download-tesseract-windows.ps1       # Windows Download-Script
+├── input/                               # PDF-Dateien hier ablegen
+├── output/                              # Ergebnisse werden hier gespeichert
 ├── src/main/java/com/pdfooocr/
-│   ├── PdfOcrApplication.java       # Hauptklasse
-│   └── OcrService.java              # OCR-Logik
-└── target/
-    └── pdf-ocr-1.0-SNAPSHOT.jar     # Kompiliertes JAR
+│   ├── PdfOcrApplication.java           # Hauptklasse
+│   └── OcrService.java                  # OCR-Logik mit Resource-Extraktion
+└── src/main/resources/
+    ├── tessdata/                        # Sprachmodelle (deu, eng, osd)
+    └── native/
+        └── macos-aarch64/               # macOS Apple Silicon Libraries
 ```
 
 ## Funktionsweise
 
-1. **PDF-Scan**: Das Programm durchsucht das Input-Verzeichnis nach PDF-Dateien
-2. **Textprüfung**: Zuerst wird geprüft, ob das PDF bereits textbasiert ist
-3. **OCR bei Bedarf**: Bei bildbasierten PDFs wird Tesseract OCR mit 300 DPI aufgerufen
-4. **Ausgabe**: Die Ergebnisse werden als `.txt`-Dateien im Output-Verzeichnis gespeichert
+1. **Startup**: Beim Start werden gebündelte Ressourcen (Tessdata + Native Libraries) in ein Temp-Verzeichnis extrahiert
+2. **PDF-Scan**: Das Programm durchsucht das Input-Verzeichnis nach PDF-Dateien
+3. **Textprüfung**: Zuerst wird geprüft, ob das PDF bereits textbasiert ist
+4. **OCR bei Bedarf**: Bei bildbasierten PDFs wird Tesseract OCR mit 300 DPI aufgerufen
+5. **Ausgabe**: Die Ergebnisse werden als `.txt`-Dateien im Output-Verzeichnis gespeichert
+
+## Plattformunterstützung
+
+| Plattform | Status | Native Libraries |
+|-----------|--------|------------------|
+| macOS (Apple Silicon) | ✅ Vollständig | Gebündelt in JAR |
+| macOS (Intel) | 🔧 Geplant | Muss hinzugefügt werden |
+| Windows (x64) | 🔧 Geplant | Download-Script vorhanden |
+| Linux (x64) | ❌ Nicht unterstützt | - |
+
+### Windows Setup
+
+Um Windows-Support hinzuzufügen:
+
+1. Auf einem Windows-Rechner ausführen:
+```powershell
+.\download-tesseract-windows.ps1
+```
+
+2. Die heruntergeladenen DLLs werden nach `src/main/resources/native/windows-x64/` kopiert
+
+3. Neu kompilieren:
+```bash
+mvn clean package
+```
 
 ## Technologien
 

@@ -40,3 +40,6 @@ Thumbs.db
 # Input/Output directories (user data)
 input/
 output/
+
+# Runtime temp directory
+pdf-ocr-tmp/
