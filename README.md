@@ -13,12 +13,35 @@ Java-Programm zur automatisierten Texterkennung von PDF-Dateien. Das Programm li
 
 - Java 17 oder höher
 - Maven
-- Tesseract OCR (über Homebrew installiert)
+- Tesseract OCR
 
 ### Tesseract installieren
 
+**macOS (Homebrew):**
 ```bash
 brew install tesseract tesseract-lang
+```
+
+**Windows:**
+1. Tesseract-OCR Installer herunterladen: https://github.com/UB-Mannheim/tesseract/wiki
+2. Während der Installation "Additional language data" für Deutsch auswählen
+3. Standard-Installationspfad: `C:\Program Files\Tesseract-OCR`
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+```
+
+### Umgebungsvariable (optional)
+
+Falls Tesseract nicht im Standardpfad installiert ist, kann die Umgebungsvariable `TESSDATA_PREFIX` gesetzt werden:
+
+```bash
+# macOS/Linux
+export TESSDATA_PREFIX="/pfad/zur/tessdata"
+
+# Windows (PowerShell)
+$env:TESSDATA_PREFIX="C:\pfad\tessdata"
 ```
 
 ## Kompilieren

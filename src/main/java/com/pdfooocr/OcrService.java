@@ -17,22 +17,57 @@ import java.nio.file.Path;
 
 public class OcrService {
 
-    private static final String TESSDATA_PATH = "/opt/homebrew/share/tessdata";
-    private static final String NATIVE_LIB_PATH = "/opt/homebrew/lib";
+    private static final String OS_NAME = System.getProperty("os.name").toLowerCase();
 
     private final ITesseract tesseract;
 
     public OcrService() {
-        System.setProperty("jna.library.path", NATIVE_LIB_PATH);
+        String tessDataPath = resolveTessDataPath();
+        String nativeLibPath = resolveNativeLibPath();
+
+        System.setProperty("jna.library.path", nativeLibPath);
 
         this.tesseract = new Tesseract();
-        this.tesseract.setDatapath(TESSDATA_PATH);
+        this.tesseract.setDatapath(tessDataPath);
         this.tesseract.setLanguage("deu+eng");
         this.tesseract.setPageSegMode(3);
 
-        File tessDataDir = new File(TESSDATA_PATH);
-        this.tesseract.setDatapath(LoadLibs.extractTessResources("tessdata").getAbsolutePath());
-        this.tesseract.setDatapath(tessDataDir.getAbsolutePath());
+        System.out.println("  -> OS: " + OS_NAME);
+        System.out.println("  -> Tessdata: " + tessDataPath);
+        System.out.println("  -> Native Libs: " + nativeLibPath);
+    }
+
+    private String resolveTessDataPath() {
+        String envPath = System.getenv("TESSDATA_PREFIX");
+        if (envPath != null && !envPath.isBlank()) {
+            return envPath;
+        }
+
+        if (isWindows()) {
+            String programFiles = System.getenv("PROGRAMFILES");
+            if (programFiles == null) {
+                programFiles = "C:\\Program Files";
+            }
+            return programFiles + "\\Tesseract-OCR\\tessdata";
+        }
+
+        return "/opt/homebrew/share/tessdata";
+    }
+
+    private String resolveNativeLibPath() {
+        if (isWindows()) {
+            String programFiles = System.getenv("PROGRAMFILES");
+            if (programFiles == null) {
+                programFiles = "C:\\Program Files";
+            }
+            return programFiles + "\\Tesseract-OCR";
+        }
+
+        return "/opt/homebrew/lib";
+    }
+
+    private static boolean isWindows() {
+        return OS_NAME.contains("win");
     }
 
     public String extractTextFromPdf(Path pdfPath) throws IOException, TesseractException {
