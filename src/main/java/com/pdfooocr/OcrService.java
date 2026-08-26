@@ -218,21 +218,24 @@ public class OcrService {
 
             System.out.println("  -> Kein Text vorhanden, fuehre OCR durch (" + pageCount + " Seiten)...");
 
+            this.tesseract.setPageSegMode(3);
+
             for (int page = 0; page < pageCount; page++) {
                 System.out.println("    Seite " + (page + 1) + "/" + pageCount + "...");
 
                 BufferedImage image = pdfRenderer.renderImageWithDPI(page, 300, ImageType.GRAY);
 
-                boolean hasGraphics = preprocessor.hasGraphics(image);
-                if (hasGraphics) {
-                    System.out.println("      -> Grafik erkannt, verwende PSM 11");
-                    this.tesseract.setPageSegMode(11);
-                } else {
-                    this.tesseract.setPageSegMode(3);
-                }
+                String pageText = tesseract.doOCR(image);
 
-                BufferedImage processed = preprocessor.preprocess(image);
-                String pageText = tesseract.doOCR(processed);
+                if (pageText == null || pageText.isBlank() || countWords(pageText) < 5) {
+                    System.out.println("      -> Schlechtes Ergebnis, versuche mit Bildvorverarbeitung...");
+                    BufferedImage processed = preprocessor.preprocess(image);
+                    String processedText = tesseract.doOCR(processed);
+                    if (processedText != null && countWords(processedText) > countWords(pageText != null ? pageText : "")) {
+                        pageText = processedText;
+                        System.out.println("      -> Preprocessing hat Ergebnis verbessert");
+                    }
+                }
 
                 if (pageText != null && !pageText.isBlank()) {
                     fullText.append(pageText);
@@ -254,5 +257,10 @@ public class OcrService {
             return text;
         }
         return null;
+    }
+
+    private int countWords(String text) {
+        if (text == null || text.isBlank()) return 0;
+        return text.trim().split("\\s+").length;
     }
 }
