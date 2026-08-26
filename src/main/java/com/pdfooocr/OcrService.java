@@ -218,35 +218,24 @@ public class OcrService {
 
             System.out.println("  -> Kein Text vorhanden, fuehre OCR durch (" + pageCount + " Seiten)...");
 
+            this.tesseract.setPageSegMode(3);
+
             for (int page = 0; page < pageCount; page++) {
                 System.out.println("    Seite " + (page + 1) + "/" + pageCount + "...");
 
                 BufferedImage image = pdfRenderer.renderImageWithDPI(page, 300, ImageType.GRAY);
 
-                String pageText = "";
-                int bestWordCount = 0;
+                String pageText = tesseract.doOCR(image);
 
-                for (int psm : new int[]{3, 6, 11}) {
-                    this.tesseract.setPageSegMode(psm);
-
-                    String tryText = tesseract.doOCR(image);
-                    int wc = countWords(tryText);
-                    if (wc > bestWordCount) {
-                        bestWordCount = wc;
-                        pageText = tryText != null ? tryText : "";
-                    }
-
+                if (pageText == null || pageText.isBlank() || countWords(pageText) < 5) {
+                    System.out.println("      -> Schlechtes Ergebnis, versuche mit Bildvorverarbeitung...");
                     BufferedImage processed = preprocessor.preprocess(image);
                     String processedText = tesseract.doOCR(processed);
-                    wc = countWords(processedText);
-                    if (wc > bestWordCount) {
-                        bestWordCount = wc;
-                        pageText = processedText != null ? processedText : "";
+                    if (processedText != null && countWords(processedText) > countWords(pageText != null ? pageText : "")) {
+                        pageText = processedText;
+                        System.out.println("      -> Preprocessing hat Ergebnis verbessert");
                     }
                 }
-
-                this.tesseract.setPageSegMode(3);
-                System.out.println("      -> Beste Erkennung: " + bestWordCount + " Woerter");
 
                 if (pageText != null && !pageText.isBlank()) {
                     fullText.append(pageText);
