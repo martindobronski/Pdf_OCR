@@ -59,10 +59,17 @@ public class PdfOcrApplication {
         OcrService ocrService = new OcrService();
         int successCount = 0;
         int errorCount = 0;
+        int skippedCount = 0;
 
         for (Path pdfFile : pdfFiles) {
             String baseName = getBaseName(pdfFile.getFileName().toString());
             Path outputFile = outputPath.resolve(baseName + ".txt");
+
+            if (Files.exists(outputFile)) {
+                System.out.println("UEBERSPRINGE: " + pdfFile.getFileName() + " (Ergebnisdatei existiert bereits)");
+                skippedCount++;
+                continue;
+            }
 
             System.out.println("Verarbeite: " + pdfFile.getFileName());
             try {
@@ -78,7 +85,7 @@ public class PdfOcrApplication {
 
         System.out.println();
         System.out.println("Verarbeitung abgeschlossen.");
-        System.out.println("Erfolgreich: " + successCount + " | Fehler: " + errorCount);
+        System.out.println("Erfolgreich: " + successCount + " | Uebersprungen: " + skippedCount + " | Fehler: " + errorCount);
     }
 
     private static String getBaseName(String filename) {
