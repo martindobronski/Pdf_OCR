@@ -26,6 +26,7 @@ public class OcrService {
     private static final String WORK_DIR = "pdf-ocr-tmp";
 
     private final ITesseract tesseract;
+    private final ImagePreprocessor preprocessor;
 
     public OcrService() {
         String tessDataPath = extractAndResolveTessdata();
@@ -37,10 +38,14 @@ public class OcrService {
         this.tesseract.setDatapath(tessDataPath);
         this.tesseract.setLanguage("deu+eng");
         this.tesseract.setPageSegMode(3);
+        this.tesseract.setVariable("preserve_interword_spaces", "1");
+
+        this.preprocessor = new ImagePreprocessor();
 
         System.out.println("  -> OS: " + OS_NAME + " (" + OS_ARCH + ")");
         System.out.println("  -> Tessdata: " + tessDataPath);
         System.out.println("  -> Native Libs: " + nativeLibPath);
+        System.out.println("  -> Bildvorverarbeitung: aktiviert");
     }
 
     private String extractAndResolveTessdata() {
@@ -217,7 +222,17 @@ public class OcrService {
                 System.out.println("    Seite " + (page + 1) + "/" + pageCount + "...");
 
                 BufferedImage image = pdfRenderer.renderImageWithDPI(page, 300, ImageType.GRAY);
-                String pageText = tesseract.doOCR(image);
+
+                boolean hasGraphics = preprocessor.hasGraphics(image);
+                if (hasGraphics) {
+                    System.out.println("      -> Grafik erkannt, verwende PSM 11");
+                    this.tesseract.setPageSegMode(11);
+                } else {
+                    this.tesseract.setPageSegMode(3);
+                }
+
+                BufferedImage processed = preprocessor.preprocess(image);
+                String pageText = tesseract.doOCR(processed);
 
                 if (pageText != null && !pageText.isBlank()) {
                     fullText.append(pageText);
